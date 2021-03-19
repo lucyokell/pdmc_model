@@ -1,5 +1,5 @@
 
-run_pmc_model<-function(n_cohort=50000,N=1000,n_years=4,adm=999, EIR_d_annual=NULL,pmc_cov=0, pmc_drug="dp", 
+run_pmc_model<-function(n_cohort=50000,n_years=4,adm=999, EIR_d_annual=NULL,pmc_cov=0, pmc_drug="dp", 
                         pmc_weeks=c(2,6,10), 
                         start_measure= 3*7, # time start measuring outcome, since discharge.
                         end_measure=14*7,EIR_fully_specified=NULL,save_sev_track=FALSE,save_age_inc=FALSE,
@@ -27,7 +27,6 @@ run_pmc_model<-function(n_cohort=50000,N=1000,n_years=4,adm=999, EIR_d_annual=NU
   rho	<-	0.85
   a0	<-	2920
   eta <- 1/(21*365) # death rate in humans
-  max_age<-60  # set max age to avoid unrealistically old people.
   
   # clinical immunity parameters
   phi0	<-	0.791666		
@@ -84,117 +83,146 @@ run_pmc_model<-function(n_cohort=50000,N=1000,n_years=4,adm=999, EIR_d_annual=NU
   # Mechanisms of recurrence.
   fixed_theta<-FALSE
   
-  
-  
-  #######################################################################
-  # IMMUNITY BURN-IN
-  # FIRST RUN A COHORT FROM AGE 0-20, TRACK THEIR IMMUNITY THROUGHOUT
-  #######################################################################
-  #IB_test5d. Add severe immunity 
-  # allow multiple bites per person. 
-  days<-20*365  ## max age
-  dt_5d<-0.5   ## dt in age, days.
-  
-  #### EIR per time step for the duration of the run:
-  if(!is.null(EIR_d_annual)) {
-    EIR_dt_annual<-rep(EIR_d_annual,each=1/dt_5d)
-  } 
-  if(!is.null(EIR_fully_specified)) {  ### take the first year of EIR for immunity burnin_d
-    EIR_dt_annual<-rep(EIR_fully_specified[1:365],each=1/dt_5d)
-  }
-  EIR_test<-rep(EIR_dt_annual,20)
-  
-  ### Set up matrices to store immunity over time per person
-  IB_test5d_i<-ICA_test5d_i<-IVA_test5d_i<-IVM_test5d_i<-matrix(nrow=N,ncol=days/dt_5d)
-  ### Initialise immunity at 0 at age 0
-  IB_test5d_i[,1]<-ICA_test5d_i[,1]<-IVA_test5d_i[,1]<-rep(0,N)
-  ### Set up matrices to record time each type of immunity boosted
-  time_ib_boost<-time_ica_boost<-time_sev_boost<-matrix(nrow=N,ncol=days/dt_5d)
-  ### Initialise immune boost time at large negative number at age=0
-  time_ib_boost[,1]<-time_ica_boost[,1]<-time_sev_boost[,1]<-rep(-1000,N)
-  ### Precompute severe immunity variable which depends only on age.
-  fva<- 1- (1-fv0)/(1+(dt_5d*(1:(days/dt_5d))/av00)^gammav) 
-  #plot(1:(days/dt_5d),fva,type="l") # check sensible shape
-  
   ##### Heterogeneity
   # rlnorm params are the mean and sd of the log distribution 
   sigma2	<-	1.67 
-  temp_rel_foi<- rlnorm(N, meanlog = -sigma2/2, sdlog = sqrt(sigma2))   # mean of log normal is exp(mu+sigma^2/2), so rearrange to get mean=1.
+  temp_rel_foi<- rlnorm(n_cohort, meanlog = -sigma2/2, sdlog = sqrt(sigma2))   # mean of log normal is exp(mu+sigma^2/2), so rearrange to get mean=1.
   #mean(temp_rel_foi)
-  rel_foi<-rep(1,N)
+  rel_foi<-rep(1,n_cohort)
   het<-T
   if(het) rel_foi<-temp_rel_foi/mean(temp_rel_foi)  # normalise.
   #mean(rel_foi)   # check mean should be 1
   
+  ##################
+  ## set up age of cohort
+  cohort_age_d<-rexp(n_cohort,rate=eta)
+  ### keep sampling till everyone is <max age and >min age
+  while(length(which(cohort_age_d>max_age_cohort | cohort_age_d<min_age_cohort))>0) {
+    inds<-which(cohort_age_d>max_age_cohort | cohort_age_d<min_age_cohort)
+    cohort_age_d[inds]<-rexp(length(inds),rate=eta)
+  }
   
-  #### Run the cohort age 0-20
-  for(j in 2:(days/dt_5d)) {  # days are age. 
-    
-    ### Update variables
-    IB_test5d_i[,j]<-IB_test5d_i[,j-1]*exp(-1/db*dt_5d)  #update daily decline
-    ICA_test5d_i[,j]<-ICA_test5d_i[,j-1]*exp(-1/dc*dt_5d)  #update daily decline
-    IVA_test5d_i[,j]<-IVA_test5d_i[,j-1]*exp(-1/dv*dt_5d)  #update daily decline
-    time_ib_boost[,j]<-time_ib_boost[,j-1]  ## carry over boost times
-    time_ica_boost[,j]<-time_ica_boost[,j-1]  ## carry over boost times
-    time_sev_boost[,j]<-time_sev_boost[,j-1]  ## carry over boost times
-    ## just track b_i as a vector per person. Not a matrix over time right now.
-    b_i<- bh*((1-bmin)/(1+(IB_test5d_i[,j]/IB0)^kb) + bmin) # update b. Minimum b is bmin*bh (not bmin alone.)
-    foi_age<-1-rho*exp(-(j*dt_5d)/a0) # update foi_age with current age
-    
-    ### Allocate bites, boost infection blocking immunity
-    nbites<-rpois(N,EIR_test[j]*foi_age*rel_foi*dt_5d) # draw daily infectious bites per person
-    if(anyNA(nbites)) {
-      print(j)
-      print(EIR_test[j])
-    }
-    is.bite<-which(nbites>0)  ## index of who gets infectious bite
-    is.bite.boost<-is.bite[which((j*dt_5d-time_ib_boost[is.bite,j])>ub)] # which current time since last boost is more than ub
-    time_ib_boost[is.bite.boost,j] <-j*dt_5d  ### record time of boosting infection blocking immunity
-    IB_test5d_i[is.bite.boost,j]<-IB_test5d_i[is.bite.boost,j] + 1  ## increase infection blocking immunity by one for those who are bitten and boosted
-    
-    ### Draw infections, boost clinical immunity
-    is.inf<-is.bite[which(runif(length(is.bite))<b_i[is.bite])]
-    is.inf.boost<-is.inf[which((j*dt_5d-time_ica_boost[is.inf,j])>uc)]
-    ICA_test5d_i[is.inf.boost,j]<-ICA_test5d_i[is.inf.boost,j] + 1
-    time_ica_boost[is.inf.boost,j] <-j*dt_5d
-    
-    ### Boost severe malaria immunity
-    is.sev.boost<-is.inf[which((j*dt_5d-time_sev_boost[is.inf,j])>uv)]
-    IVA_test5d_i[is.sev.boost,j]<-IVA_test5d_i[is.sev.boost,j] + 1
-    time_sev_boost[is.sev.boost,j] <-j*dt_5d
+  #######################################################################
+  # IMMUNITY BURN-IN
+  # FIRST RUN A COHORT FROM AGE 0-20, SAVE IMMUNITY AT MIN AGE, CURRENT AGE, AND AT MOTHER'S AGE (for maternal immunity)
+  #######################################################################
+  ######################################
+  # EIR for immunity burnin set up
+  EIR_imm<-NA
+  if(!is.null(EIR_d_annual)) {
+ #   EIR_dt_annual<-rep(EIR_d_annual,each=1/dt_5d)
+    EIR_imm<-mean(EIR_d_annual)
+  } 
+  if(!is.null(EIR_fully_specified)) {  ### take the first year of EIR for immunity burnin_d
+  #  EIR_dt_annual<-rep(EIR_fully_specified[1:365],each=1/dt_5d)
+    EIR_imm<-mean(EIR_fully_specified[1:365])
   }
-  ## add maternal severe immunity + decay.
-  IVM_test5d_i[,1]<-IVA_test5d_i[,20*365/dt_5d] * P_IV_M  ## each person aged 20.
-  ivm_decay<-function(x) {x*exp(-1/dvm*2:ncol(IVM_test5d_i)*dt_5d)}
-  for(i in 1:nrow(IVM_test5d_i)) {
-    IVM_test5d_i[i,2:ncol(IVM_test5d_i)] <- ivm_decay(IVM_test5d_i[i,1])
-  }
-  ## Compute infection blocking and severe immunity over time.
-  b_i<-theta_i<-matrix(nrow=N,ncol=days/dt_5d)
-  b_i<- bh*((1-bmin)/(1+(IB_test5d_i/IB0)^kb) + bmin) # update b. Minimum b is bmin*bh (not bmin alone.)
-  computeTheta<-function(iva,ivm) {
-    theta0*(theta1 + (1-theta1)/(1+fva*((iva+ivm)/IV0)^gammav ))  ## Check brackets
-  }
-  for(i in 1:nrow(theta_i)) theta_i[i,]<-computeTheta(IVA_test5d_i[i,],IVM_test5d_i[i,])
+  
+  
+  
+  dt_age<-30  ### timestep for initial immunity calculation
+  age_days<-seq(0,20*365,by=dt_age)  ## age in days, to the nearest 30 days.
 
+  ### intermediate variable for equilibrium immunity initialisation.
+  # deterministic population structure. Use 0.25 yr steps, smallest of Jamie's age groups.
+  age_rate<-1/dt_age
+  den<-vector()
+  den[1]<-1/(1+age_rate/eta)
+  for(i in 2:length(age_days)) den[i]<-age_rate*den[i-1]/(age_rate+eta)
+  x_I=den[1]/eta  ## weighted days spent in this age group (allowing for mortality).
+  #for(i in 2:length(age_days)) x_I[i]=den[i]/(den[i-1]*age_rate)
+  # x_I is the same when age width constant. Can use as single param value.
+  
+  # foi age for deterministic immunity approximation
+  foi_age_imm<-1-rho*exp(-age_days/a0) #
+  
+  ## write immunity calculation as a vectorized function to speed up
+  ## edit to output starting IB at min age (for re-birth), current IB at beginning of sim, IB as mum
+  calc_imm<-function(vec_curr_age,vec_rel_foi,vec_IB_init,vec_ICA_init,vec_IVA_init,min_age,mum_age) {
+    for(j in 1:mum_age) { ## add up IB over ages. Can't solve easily because of changing foi age
+      EIR_curr<-EIR_imm*vec_rel_foi*foi_age_imm[j]
+      vec_IB_init<- (vec_IB_init + EIR_curr/(EIR_curr*ub+1)  * x_I)/(1+x_I/db)
+      curr_b<- bh*((1-bmin)/(1+(vec_IB_init/IB0)^kb) + bmin) # update b. Minimum b is bmin*bh (not bmin alone.)
+      curr_foi<-EIR_curr*curr_b
+      vec_ICA_init<- (vec_ICA_init + curr_foi/(curr_foi*uc+1)  * x_I[1])/(1+x_I[1]/dc)
+      vec_IVA_init<- (vec_IVA_init + curr_foi/(curr_foi*uv+1)  * x_I[1])/(1+x_I[1]/dv)
+      if(j==min_age) {
+        vec_IB_min_age<-vec_IB_init
+        vec_ICA_min_age<-vec_ICA_init
+        vec_IVA_min_age<-vec_IVA_init
+      }
+      if(j==vec_curr_age) {
+        vec_IB_current<-vec_IB_init
+        vec_ICA_current<-vec_ICA_init
+        vec_IVA_current<-vec_IVA_init
+      }
+    }
+    return(list(minIB=vec_IB_min_age,currIB=vec_IB_current,mumIB=vec_IB_init,
+                minICA=vec_ICA_min_age,currICA=vec_ICA_current,mumICA=vec_ICA_init,
+                minIVA=vec_IVA_min_age,currIVA=vec_IVA_current,mumIVA=vec_IVA_init))   ## final vec_IB_init is mum age IB
+  } ##
+  vI <- Vectorize(calc_imm)
+  
+  
+  ##########################################
+  #IB_test5d_i<-vIB(round(cohort_age_d/dt_age),rel_foi,rep(0,n_cohort))
+  imm_3_ages<-vI(vec_curr_age=round(cohort_age_d/dt_age),
+                   vec_rel_foi=rel_foi,
+                   vec_IB_init=rep(0,n_cohort),
+                   vec_ICA_init=rep(0,n_cohort),
+                   vec_IVA_init=rep(0,n_cohort),
+                   min_age=round(min_age_cohort/dt_age),
+                   mum_age=20*12)
+  #imm_3_ages<-simplify2array(imm_3_ages)
+  IB_min<-unlist(imm_3_ages[1,])
+  IB_test5d_i<-unlist(imm_3_ages[2,])
+  IB_mum<-unlist(imm_3_ages[3,])
+  ICA_min<-unlist(imm_3_ages[4,])
+  ICA_test5d_i<-unlist(imm_3_ages[5,])
+  ICA_mum<-unlist(imm_3_ages[6,])
+  IVA_min<-unlist(imm_3_ages[7,])
+  IVA_test5d_i<-unlist(imm_3_ages[8,])
+  IVA_mum<-unlist(imm_3_ages[9,])
+  
+  ##### Maternal immunity
+  ICM_init<-ICA_mum*P_IC_M
+  ICM<-ICM_init*exp(-1/dm*cohort_age_d)
+  
+  IVM_init<-IVA_mum*P_IV_M*exp(-1/dvm*min_age_cohort)
+  IVM<-IVA_mum*P_IV_M*exp(-1/dvm*cohort_age_d)
+  
+  ############# Transform immunity variables into b, theta
+  b_i<- bh*((1-bmin)/(1+(IB_test5d_i/IB0)^kb) + bmin) # update b. Minimum b is bmin*bh (not bmin alone.)
+
+    ### Precompute severe immunity variable which depends only on age.
+  fva<- 1- (1-fv0)/(1+(cohort_age_d/av00)^gammav) 
+  theta_i<-theta0*(theta1 + (1-theta1)/(1+fva*((IVA_test5d_i+IVM)/IV0)^gammav ))  ## Check brackets
+  
+  ### Set up matrices to store immunity over time per person
+  ### Set up matrices to record time each type of immunity boosted
+  #time_ica_boost<-time_sev_boost<-matrix(nrow=N,ncol=days/dt_5d)
+  ### Initialise immune boost time at large negative number at age=0
+  #time_ica_boost[,1]<-time_sev_boost[,1]<-rep(-1000,N)
+  
+
+  ## Compute infection blocking and severe immunity over time.
+  
   ######################################################################################
-  # RUN PMC SIMULATION OVER TIME
+  # PMC SIMULATION OVER TIME
   ######################################################################################
   
-  ## sample some individuals at random from the above simulation - randomly by individual and weighted by exponential age structure:
-  inds_indiv<-round(runif(n_cohort,min=1,max=N))
-  possible_inds_age<-((min_age_cohort+1)/dt_5d):(max_age_cohort/dt_5d)
-  inds_age<-sample(possible_inds_age,size=n_cohort,replace=T,prob=exp(-eta*possible_inds_age*dt_5d))
-  inds<-cbind(inds_indiv,inds_age)
-  cohort<-data.frame(age_d=inds_age*dt_5d,
-                     IB=IB_test5d_i[inds], 
-                     IVA=IVA_test5d_i[inds],
-                     IVM=IVM_test5d_i[inds],
-                     b=b_i[inds], 
-                     theta=theta_i[inds],
-                     age_ib_boost=time_ib_boost[inds],
-                     age_sev_boost=time_sev_boost[inds],
-                     rel_foi=rel_foi[inds_indiv]/mean(rel_foi[inds_indiv]),  ##re-normalise for this population
+  #######################
+  # SET UP
+  #######################
+  cohort<-data.frame(age_d=cohort_age_d,
+                     IB=IB_test5d_i, 
+                     IVA=IVA_test5d_i,
+                     IVM=IVM,
+                     b=b_i, 
+                     theta=theta_i,
+                     age_ib_boost=-1000,
+                     age_sev_boost=-1000,
+                     rel_foi=rel_foi,  
                      last_sev_time=-1000,  #time last had a severe episode
                      last_sma_time=-1000,  #time last had a SMA episode
                      hosp_time=-1000, # time of first going to hospital.
@@ -256,6 +284,9 @@ run_pmc_model<-function(n_cohort=50000,N=1000,n_years=4,adm=999, EIR_d_annual=NU
     res_over_time<-data.frame(weeks=1:tot_weeks,n_sma=0,persondays_all=rep(n_cohort*7),n_reinf_pd=0,persondays_pd=0)
   }
   
+  #######################
+  # RUN OVER TIME
+  #######################
   for(j in 1:length(eir_d)) {  # days are TIME 
   #for(j in 101:200) {  # days are TIME 
     
@@ -267,19 +298,13 @@ run_pmc_model<-function(n_cohort=50000,N=1000,n_years=4,adm=999, EIR_d_annual=NU
                     IVM=IVM*exp(-1/dvm*dt),
                     b=bh*((1-bmin)/(1+(IB/IB0)^kb) + bmin),
                     fva= 1- (1-fv0)/(1+(age_d/av00)^gammav),
-                    theta= theta0*(theta1 + (1-theta1)/(1+fva*((IVA+IVM)/IV0)^gammav)),  ## add IVM. Check brackets
+                    theta= theta0*(theta1 + (1-theta1)/(1+fva*((IVA+IVM)/IV0)^gammav)),
                     foi_age=1-rho*exp(-(age_d)/a0))
     
     # who is currently in postdischarge state
     is.postd<-NULL
     is.postd<-which(j*dt - (cohort$last_sma_time +hospital_stay) < end_measure &
                                      j*dt - (cohort$last_sma_time +hospital_stay) > start_measure)
-    
-    ### Modify severe immunity acc to assumption
-    if(fixed_theta) {
-      inds<-which(j*dt - cohort$last_sev_time <6*30.5)
-      cohort$theta[inds]<-theta0
-    }
     
     ### New infectious bites, infection blocking immunity
     nbites<-rpois(n_cohort,eir_d[j]*cohort$foi_age*cohort$rel_foi*dt) # infectious bites per person this time step
@@ -367,14 +392,7 @@ run_pmc_model<-function(n_cohort=50000,N=1000,n_years=4,adm=999, EIR_d_annual=NU
     
     ## severe immunity boosting.
     # normal
-    if(!delay_sev_boost) {
-      is.sev.boost<-is.inf[which((cohort$age_d[is.inf] -cohort$age_sev_boost[is.inf])>uv)]
-    }
-    # delayed (no boosting allowed within x months of having a severe episode)
-    if(delay_sev_boost) {
-      is.sev.boost<-is.inf[which((cohort$age_d[is.inf] -cohort$age_sev_boost[is.inf])>uv
-                                 & (j*dt - cohort$last_sev_time[is.inf])>delay_boost_time)]
-    }
+    is.sev.boost<-is.inf[which((cohort$age_d[is.inf] -cohort$age_sev_boost[is.inf])>uv)]
     cohort$IVA[is.sev.boost]<-cohort$IVA[is.sev.boost] + 1
     cohort$age_sev_boost[is.sev.boost] <-cohort$age_d[is.sev.boost]
     
@@ -422,13 +440,11 @@ run_pmc_model<-function(n_cohort=50000,N=1000,n_years=4,adm=999, EIR_d_annual=NU
       cohort$age_d[is.removed]<-min_age_cohort  
       # reset immunity to what the person would have had at the age of inclusion into study
       # rel foi stays the same.
-      cohort$IB[is.removed]<-IB_test5d_i[inds_indiv[is.removed],min_age_cohort/dt_5d]
-      cohort$IVA[is.removed]<-IVA_test5d_i[inds_indiv[is.removed],min_age_cohort/dt_5d]
-      cohort$IVM[is.removed]<-IVM_test5d_i[inds_indiv[is.removed],min_age_cohort/dt_5d]
-      cohort$b[is.removed]<-b_i[inds_indiv[is.removed],min_age_cohort/dt_5d]
-      cohort$theta[is.removed]<-theta_i[inds_indiv[is.removed],min_age_cohort/dt_5d]
-      cohort$age_ib_boost[is.removed]<-time_ib_boost[inds_indiv[is.removed],min_age_cohort/dt_5d]
-      cohort$age_sev_boost[is.removed]<-time_sev_boost[inds_indiv[is.removed],min_age_cohort/dt_5d]
+      cohort$IB[is.removed]<-IB_min[is.removed]
+      cohort$IVA[is.removed]<-IVA_min[is.removed]
+      cohort$IVM[is.removed]<-IVM_init[is.removed]
+      cohort$age_ib_boost[is.removed]<- -1000
+      cohort$age_sev_boost[is.removed]<- -1000
       
     }
     
