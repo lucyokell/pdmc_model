@@ -157,7 +157,7 @@ imperial_mod<-read.csv("adm1_epi_2019_sma3_paton.csv")
 imperial_mod$inc_sma_ppy_genpop_prophosp_paton07<-NA
 for(i in 1:nrow(imperial_mod)) {
   if(imperial_mod$inc_sma_ppy[i]>0) {
-    temp<-readRDS(paste0("output/w",i,".rds"))
+    temp<-readRDS(paste0("w",i,".rds"))
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton07[i]<-as.numeric(temp)
   } else {
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton07[i]<-0
@@ -190,7 +190,7 @@ imperial_mod<-read.csv("adm1_epi_2019_sma3_paton.csv")
 imperial_mod$inc_sma_ppy_genpop_prophosp_paton05<-NA
 for(i in 1:nrow(imperial_mod)) {
   if(imperial_mod$inc_sma_ppy[i]>0) {
-    temp<-readRDS(paste0("output/w",i,".rds"))
+    temp<-readRDS(paste0("z",i,".rds"))
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton05[i]<-as.numeric(temp)
   } else {
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton05[i]<-0
@@ -223,7 +223,7 @@ imperial_mod<-read.csv("adm1_epi_2019_sma3_paton.csv")
 imperial_mod$inc_sma_ppy_genpop_prophosp_paton03<-NA
 for(i in 1:nrow(imperial_mod)) {
   if(imperial_mod$inc_sma_ppy[i]>0) {
-    temp<-readRDS(paste0("output/y",i,".rds"))
+    temp<-readRDS(paste0("y",i,".rds"))
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton03[i]<-as.numeric(temp)
   } else {
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton03[i]<-0
