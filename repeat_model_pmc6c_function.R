@@ -44,8 +44,7 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
   # total: inc sma genpop is the total incidence from the G compartment, incl unhospitalised.
   # calculate hospitalised incidence at the end to get estimates to match to hospitalised data.
   prob_sma_gen_d<-1-exp((-inc_sma_genpop/365)*dt)
-  #prob_sev_other_gen_d<- 1-exp((-inc_sev_other_genpop/365)*dt)
-  
+
   prob_sm_plac<-1-prob_um_plac
   prob_sm_pmc<-1-prob_um_pmc
   prob_sma_of_sm<-43.9/101.9  ## SMA out of SM readmissions in Kwambai et al
@@ -299,7 +298,7 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
     # PMC1 starts 14 days after discharge. Go directly from PDal (G with delay)
     Pmc1[i,1] <-ifelse(i<=(dur_pd_al+hosp_stay),0,
                        prop_hosp*(1-cfr_sma_h)*pmc_covs[1]*inc_sma_all[i-hosp_stay-dur_pd_al])
-    # dose 2 of PMC. No one enters this state immediately after discharge.
+    # dose 2, 3 of PMC. No one enters these states immediately after discharge.
     Pmc2[i,1]<-0
     Pmc3[i,1]<-0
     
@@ -397,7 +396,6 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
     summ<-c(inc_sma_all_eq=365*inc_sma_all_eq, 
             inc_sma_all_hosp_eq=365*inc_sma_all_hosp_eq,
             inc_sma_all_paton_eq=365*inc_sma_all_paton_eq,
-            #inc_sev_other_eq=365*inc_sev_other_eq,
             inc_sma_pd_eq=365*inc_sma_pd_eq,
             inc_sev_oth_pd_eq=365*inc_sev_oth_pd_eq,
             inc_sma_1_3_pd_eq=365*inc_sma_1_3_pd_eq,
@@ -405,12 +403,11 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
             num_pmc_eq=365*num_pmc_eq, 
             num_sma_gen_pppy=365*num_sma_gen_pppd,
             num_sma_pd_pppy=365*num_sma_pd_pppd,
-            #num_sev_oth_gen_pppy=365*num_sev_oth_gen_pppd,
             num_sev_oth_pd_pppy=365*num_sev_oth_pd_pppd,
             deaths_pppy=365*deaths)
     if(output=="rds")
       saveRDS(summ,
-            file=paste0("\\\\fi--san03\\homes\\lokell\\Lucy\\PMC_post_discharge\\output\\out_summ_adm",adm,".rds"))
+            file=paste0("out_summ_adm",adm,".rds"))
     if(output=="summary2R")
       return(summ)
     } else {  

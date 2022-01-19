@@ -1,8 +1,6 @@
 
 library(dplyr)
 
-setwd("C:/Users/lokell/Dropbox (SPH Imperial College)/PMC post discharge")
-
 ## read in Imperial College model predictions.
 # NB in this file, 'sev_inc' variables = hospitalised malaria
 imperial_mod<-read.csv("adm1_epi_2019_sma2.csv")

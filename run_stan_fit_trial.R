@@ -7,7 +7,6 @@ library(rstan)
 library(dplyr)
 
 ## Set to working directory / project.
-setwd("C:/Users/lokell/OneDrive - Imperial College London/Paper drafts/PMC/submission/code")
 
 ################ READ IN DATA
 trial_epi<-read.csv("trial_hospital_epi_git.csv")

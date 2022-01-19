@@ -41,5 +41,5 @@ optimise_fit_sma<-function(filestart,adm,inc_sma_genpop0,
            tol=1e-4)
   y<-x$minimum
   saveRDS(y,
-          file=paste0("\\\\fi--didenas5.dide.ic.ac.uk\\Malaria\\Lucy\\PMC_post_discharge\\output\\",filestart,adm,".rds"))
+          file=paste0(filestart,adm,".rds"))
 }
