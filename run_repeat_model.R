@@ -21,8 +21,7 @@ imperial_mod<-read.csv("adm1_epi_2019_sma3_paton.csv")
 ##################################
 # READ IN FITTED PARAMS
 ##################################
-#cohort_stan_fit_paramsonly.rds
-fit<-readRDS("pmc14g_cut8_fit_paramsonly.rds")
+fit<-readRDS("pmc14g_cut8_fit_paramsonly_correct_negbin.rds")
 params<-fit
 r_eir<-median(params$r)
 prob_um_plac<-median(params$prob_um_plac)
@@ -145,11 +144,11 @@ for(i in 1:nrow(imperial_mod)) {
                                               tol=0.00001))
 }
 
-for(j in 1:605) saveRDS(eval(parse(text=paste0("w",j,"$minimum"))), file=paste0("w",j,".rds"))
+for(j in 1:nrow(imperial_mod)) saveRDS(eval(parse(text=paste0("w",j,"$minimum"))), file=paste0("w",j,".rds"))
 
 # check all have run
 try_read<-function(i) { try(readRDS(paste0("w",i,".rds"))) }
-i<-1:605
+i<-1:nrow(imperial_mod)
 check<-unlist(purrr::map(i,try_read))
 check
 
@@ -157,7 +156,7 @@ imperial_mod<-read.csv("adm1_epi_2019_sma3_paton.csv")
 imperial_mod$inc_sma_ppy_genpop_prophosp_paton07<-NA
 for(i in 1:nrow(imperial_mod)) {
   if(imperial_mod$inc_sma_ppy[i]>0) {
-    temp<-readRDS(paste0("w",i,".rds"))
+    temp<-readRDS(paste0("output/w",i,".rds"))
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton07[i]<-as.numeric(temp)
   } else {
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton07[i]<-0
@@ -184,13 +183,13 @@ for(i in 1:nrow(imperial_mod)) {
                                 tol=0.00001))
 }
 
-for(j in 1:605) saveRDS(eval(parse(text=paste0("z",j,"$minimum"))), file=paste0("z",j,".rds"))
+for(j in 1:nrow(imperial_mod)) saveRDS(eval(parse(text=paste0("z",j,"$minimum"))), file=paste0("z",j,".rds"))
 
 imperial_mod<-read.csv("adm1_epi_2019_sma3_paton.csv")
 imperial_mod$inc_sma_ppy_genpop_prophosp_paton05<-NA
 for(i in 1:nrow(imperial_mod)) {
   if(imperial_mod$inc_sma_ppy[i]>0) {
-    temp<-readRDS(paste0("z",i,".rds"))
+    temp<-readRDS(paste0("output/w",i,".rds"))
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton05[i]<-as.numeric(temp)
   } else {
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton05[i]<-0
@@ -217,13 +216,13 @@ for(i in 1:nrow(imperial_mod)) {
                                 tol=0.00001))
 }
 
-for(j in 1:605) saveRDS(eval(parse(text=paste0("y",j,"$minimum"))), file=paste0("y",j,".rds"))
+for(j in 1:nrow(imperial_mod)) saveRDS(eval(parse(text=paste0("y",j,"$minimum"))), file=paste0("y",j,".rds"))
 
 imperial_mod<-read.csv("adm1_epi_2019_sma3_paton.csv")
 imperial_mod$inc_sma_ppy_genpop_prophosp_paton03<-NA
 for(i in 1:nrow(imperial_mod)) {
   if(imperial_mod$inc_sma_ppy[i]>0) {
-    temp<-readRDS(paste0("y",i,".rds"))
+    temp<-readRDS(paste0("output/y",i,".rds"))
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton03[i]<-as.numeric(temp)
   } else {
     imperial_mod$inc_sma_ppy_genpop_prophosp_paton03[i]<-0
@@ -338,4 +337,5 @@ for(h in 1:length(hosp_name)) {
   }
 }
 
-write.csv(imperial_mod,"adm1_epi_2019_sma2_paton_cal_repmod.csv",row.names = F)
+write.csv(imperial_mod,"adm1_epi_2019_sma2_paton_cal_repmod3.csv",row.names = F)
+
