@@ -2,6 +2,29 @@
 # DETERMINISTIC MODEL OF SMA IN GENERAL POPULATION AND POST-DISCHARGE COHORT
 #####################################################
 
+# 4 cfrs in the hospital and community SMA/other sev
+# Fix error in people undergoing hospitalization plus treatment (should be either / or)
+# Fix error in inc SMA ALL TERM FOLLOW THROUGH IN H ETC (had ADDED IN G IN COMMUNITY TWICE)
+# Also input total SMA inc to correct community inc.
+# Proportion hospitalised - added.
+# Weibull risk period + PMC reduced risk.
+# accommodate cut data
+# corrected timing of risk periods
+# added mortality.
+## model whole pop
+## inc of sev mal = Jamie, and inc of SMA
+## separate out sev mal and SMA. Assume SMA triggers future episodes while other SM does not.
+## repeating episodes. Calibrate until tot inc = tot inc in jamie by admins.
+## calculate how many are additional.
+## then put in pmc and see what happens. Account for repeat episodes
+## Inputs are 1) incidence SMA in general population, 
+  #2) incidence of non SMA severe malaria in general population, 3) EIR
+
+# run_repeat_mod<-function(inc_sma_genpop,inc_sev_other_genpop,eir,pmc,
+#                          output="summary",ft_um_pd=0.5,ft_sev_pd=0.5,
+#                          prop_hosp=0.5, 
+#                          pmc_covs=c(0.765, 0.879,0.894), fitted_params,
+#                          adm) {
 run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
                          output="summary",ft_um_pd0=0.5,ft_sev_pd0=0.5,
                          prop_hosp=0.5, prop_hosp_paton=0.5,
@@ -44,7 +67,8 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
   # total: inc sma genpop is the total incidence from the G compartment, incl unhospitalised.
   # calculate hospitalised incidence at the end to get estimates to match to hospitalised data.
   prob_sma_gen_d<-1-exp((-inc_sma_genpop/365)*dt)
-
+  #prob_sev_other_gen_d<- 1-exp((-inc_sev_other_genpop/365)*dt)
+  
   prob_sm_plac<-1-prob_um_plac
   prob_sm_pmc<-1-prob_um_pmc
   prob_sma_of_sm<-43.9/101.9  ## SMA out of SM readmissions in Kwambai et al
@@ -166,10 +190,13 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
   # RUN MODEL OVER TIME
   ##########################################
   for(i in 2:runTime) {
-
+    #for(i in 20:20) {
+    #for(i in 2:190) {
+    
+    
     # move everyone in the postdischarge state along a day in time (i) and in postdischarge time (j). 
     for(j in 2:n_pd) {
-      ## other types of severe malaria / malaria requiring hospitalisation - track in postdischarge groups. No need to track in the community because it will not change any states.
+      ## other types of severe malaria - track in postdischarge groups. No need to track in the community because it will not change any states.
       inc_sev_other_all[i,j]<-PD[i-1,j-1]*prob_sev_other_pd_time_plac[j-1] +
         PD2_c[i-1,j-1]*prob_sev_other_pd_time_plac[j-1] +
         Pmc1[i-1,j-1]*prob_sev_other_pd_time_pmc1[j-1]*(1-pp1[j-1]) +
@@ -195,8 +222,9 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
         ifelse(j==pmc_times[2], pmc_covs[2]*PD[i-1,j-1],0) -
         ifelse(j==pmc_times[3], pmc_covs[3]*PD[i-1,j-1],0)
       
+      # plus new cases from the PD group. Minus the new cases dur_p days ago
       # assume complete protection for a fixed 14 days in  treated cases.
-      #  track treated uncomplicated + sev malaria as they will be protected.
+      # need to track uncomplicated + sev malaria, treated, over time as they will be protected.
       Pmc1[i,j]<- Pmc1[i-1,j-1]  - 
         Pmc1[i-1,j-1]*prob_sma_pd_time_pmc1[j-1]*(1-pp1[j-1]) -
         Pmc1[i-1,j-1]*prob_um_pd_time_pmc1[j-1]*ft_um_pd*(1-pp1[j-1]) -
@@ -241,12 +269,15 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
                  Pmc3[i-dur_p,j-dur_p]*prob_um_pd_time_pmc3[j-dur_p]*ft_um_pd*(1-pp3[j-dur_p]) ,0)
       
       
-      # Also need to track other sev malaria amongst post-SMA group, as treatment will provide protection.
+      # Also need to track other sev malaria as treatment will provide protection.
       Svt[i,j]<- Svt[i-1,j-1] + ((1-prop_hosp)*(1-cfr_sev_c)*ft_sev_pd + prop_hosp*(1-cfr_sev_other_h))*inc_sev_other_all[i,j]  - 
         ifelse((i>(dur_p+hosp_stay) & j>(dur_p+hosp_stay)),
                ((1-prop_hosp)*(1-cfr_sev_c)*ft_sev_pd + prop_hosp*(1-cfr_sev_other_h))*
                  inc_sev_other_all[i+1-(dur_p+hosp_stay),j+1-(dur_p+hosp_stay)],0)
+      
 
+      
+      
     }  # end of j loop over post discharge time.
     
     ## all incident SMA cases
@@ -257,6 +288,8 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
       sum(Pmc2[i-1,]*prob_sma_pd_time_pmc2*(1-pp2)) +
       sum(Pmc3[i-1,]*prob_sma_pd_time_pmc3*(1-pp3))
     
+    # minus cases in general pop. Plus those leaving final PD state (end of e.g. 6months).
+    # we don't model treatment in the G group because it is already accounted for in our incidence in that group (fitted by Jamie assuming treatment)
     G[i]<-G[i-1] - G[i-1]*prob_sma_gen_d + PD[i-1,n_pd]*(1-prob_sma_pd_time_plac[n_pd]) +
       PD2_c[i-1,n_pd]*(1-prob_sma_pd_time_plac[n_pd]) +
       Ut[i-1,n_pd] + Svt[i-1,n_pd] + Pmc1[i-1,n_pd]*(1-prob_sma_pd_time_pmc1[n_pd]*(1-pp1[n_pd])) + 
@@ -271,6 +304,7 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
     H[i]<- H[i-1] + 
       ## SMA, hospitalised and survived OR not hospitalised and survived in the communuty
       ((1-prop_hosp)*(1-cfr_sma_c)+prop_hosp*(1-cfr_sma_h))*inc_sma_all[i] -
+      ## subtract the same group after fixed delay of hosp_stay days
       ifelse(i<=hosp_stay,0,
              ((1-prop_hosp)*(1-cfr_sma_c)+prop_hosp*(1-cfr_sma_h))*inc_sma_all[i-hosp_stay])
     
@@ -298,7 +332,7 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
     # PMC1 starts 14 days after discharge. Go directly from PDal (G with delay)
     Pmc1[i,1] <-ifelse(i<=(dur_pd_al+hosp_stay),0,
                        prop_hosp*(1-cfr_sma_h)*pmc_covs[1]*inc_sma_all[i-hosp_stay-dur_pd_al])
-    # dose 2, 3 of PMC. No one enters these states immediately after discharge.
+    # dose 2 of PMC. No one enters this state immediately after discharge.
     Pmc2[i,1]<-0
     Pmc3[i,1]<-0
     
@@ -310,8 +344,13 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
       sum(Pmc1[i,]) +sum(Pmc2[i,]) + sum(Pmc3[i,]) 
     
   }
+  #plot(rowSums(Pmc3))
+  #lines(rowSums(Pmc2))
+  #lines(rowSums(Pmc1),col="blue")
 
-    deaths<- -log(1-(((1-prop_hosp)*cfr_sma_c +prop_hosp*cfr_sma_h)*inc_sma_all[i] +
+  
+  
+  deaths<- -log(1-(((1-prop_hosp)*cfr_sma_c +prop_hosp*cfr_sma_h)*inc_sma_all[i] +
     ((1-prop_hosp)*cfr_sev_c +prop_hosp*cfr_sev_other_h)*sum(inc_sev_other_all[i,2:n_pd])))
     
     
@@ -335,7 +374,24 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
                                                 sum(Pmc2[runTime-1,]*prob_sma_pd_time_pmc2*(1-pp2)) +
                                                 sum(Pmc3[runTime-1,]*prob_sma_pd_time_pmc3*(1-pp3)))))
   
-  ## Separate how many episodes are occurring post-SMA versus in general popn
+  ## incident other sev cases at the end of the run (i.e. equilibrium)
+  # other sev cases are tracked during PD to allow for prophylaxis during post discharge period
+  # add in other sev cases in the general population to the incidence (we do not track them in the model as assume all accounted for in Jamie's fit)
+  # inc_sev_other_eq<- -log(1- (G[runTime-1]*prob_sev_other_gen_d +  
+  #                               sum(PD[runTime-1,]*prob_sev_other_pd_time_plac) +
+  #                               sum(PD2_c[runTime-1,]*prob_sev_other_pd_time_plac) +
+  #                               sum(Pmc1[runTime-1,]*prob_sev_other_pd_time_pmc1*(1-pp1)) +
+  #                               sum(Pmc2[runTime-1,]*prob_sev_other_pd_time_pmc2*(1-pp2)) +
+  #                               sum(Pmc3[runTime-1,]*prob_sev_other_pd_time_pmc3*(1-pp3))))
+  # 
+  # inc_sev_other_hosp_eq<- -log(1- (prop_hosp*(G[runTime-1]*prob_sev_other_gen_d +  
+  #                               sum(PD[runTime-1,]*prob_sev_other_pd_time_plac) +
+  #                               sum(PD2_c[runTime-1,]*prob_sev_other_pd_time_plac) +
+  #                               sum(Pmc1[runTime-1,]*prob_sev_other_pd_time_pmc1*(1-pp1)) +
+  #                               sum(Pmc2[runTime-1,]*prob_sev_other_pd_time_pmc2*(1-pp2)) +
+  #                               sum(Pmc3[runTime-1,]*prob_sev_other_pd_time_pmc3*(1-pp3)))))
+  # 
+  ## Separate how many episodes are occurring PD versus in general popn
   num_sma_gen_pppd <- -log(1- (G[runTime-1]*prob_sma_gen_d))
   num_sma_pd_pppd <- -log(1-(sum(PD[runTime-1,]*prob_sma_pd_time_plac) +
                                sum(PD2_c[runTime-1,]*prob_sma_pd_time_plac) +
@@ -343,13 +399,14 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
                                sum(Pmc2[runTime-1,]*prob_sma_pd_time_pmc2*(1-pp2)) +
                                sum(Pmc3[runTime-1,]*prob_sma_pd_time_pmc3*(1-pp3))))
   
+  #num_sev_oth_gen_pppd <- -log(1- (G[runTime-1]*prob_sev_other_gen_d))
   num_sev_oth_pd_pppd <- -log(1-(sum(PD[runTime-1,]*prob_sev_other_pd_time_plac) +
                                    sum(PD2_c[runTime-1,]*prob_sev_other_pd_time_plac) +
                                    sum(Pmc1[runTime-1,]*prob_sev_other_pd_time_pmc1*(1-pp1)) +
                                sum(Pmc2[runTime-1,]*prob_sev_other_pd_time_pmc2*(1-pp2)) +
                                sum(Pmc3[runTime-1,]*prob_sev_other_pd_time_pmc3*(1-pp3))))
 
-    ## Incidence post SMA per person (among post SMA group)
+    ## Incidence post discharge (among post discharge group)
   inc_sma_pd_eq<- -log(1-((sum(PD[runTime-1,]*prob_sma_pd_time_plac) +
                              sum(PD2_c[runTime-1,]*prob_sma_pd_time_plac) +
                              sum(Pmc1[runTime-1,]*prob_sma_pd_time_pmc1*(1-pp1)) +
@@ -368,26 +425,27 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
                             sum(Pmc2[runTime-1,]) + sum(Pmc3[runTime-1,])+sum(Ut[runTime-1]) +
                                                           sum(Svt[runTime-1])))
   
-  inc_sma_1_3_pd_eq<- -log(1-((sum(PD[runTime-1,1:84]*prob_sma_pd_time_plac[1:84]) +
-                                 sum(PD2_c[runTime-1,1:84]*prob_sma_pd_time_plac[1:84]) +
-                                 sum(Pmc1[runTime-1,1:84]*prob_sma_pd_time_pmc1[1:84]*(1-pp1[1:84])) +
-                                 sum(Pmc2[runTime-1,1:84]*prob_sma_pd_time_pmc2[1:84]*(1-pp2[1:84])) +
-                                 sum(Pmc3[runTime-1,1:84]*prob_sma_pd_time_pmc3[1:84]*(1-pp3[1:84]))))/
-                             (sum(PD[runTime-1,1:84])+ sum(PD2_c[runTime-1,1:84])+sum(Pmc1[runTime-1,1:84])+
-                                sum(Pmc2[runTime-1,1:84])+sum(Pmc3[runTime-1,1:84])+
-                                sum(Ut[runTime-1,1:84]) + sum(Svt[runTime-1,1:84])))
+  inc_sma_1_3_pd_eq<- -log(1-((sum(PD[runTime-1,1:90]*prob_sma_pd_time_plac[1:90]) +
+                                 sum(PD2_c[runTime-1,1:90]*prob_sma_pd_time_plac[1:90]) +
+                                 sum(Pmc1[runTime-1,1:90]*prob_sma_pd_time_pmc1[1:90]*(1-pp1[1:90])) +
+                                 sum(Pmc2[runTime-1,1:90]*prob_sma_pd_time_pmc2[1:90]*(1-pp2[1:90])) +
+                                 sum(Pmc3[runTime-1,1:90]*prob_sma_pd_time_pmc3[1:90]*(1-pp3[1:90]))))/
+                             (sum(PD[runTime-1,1:90])+ sum(PD2_c[runTime-1,1:90])+sum(Pmc1[runTime-1,1:90])+
+                                sum(Pmc2[runTime-1,1:90])+sum(Pmc3[runTime-1,1:90])+
+                                sum(Ut[runTime-1,1:90]) + sum(Svt[runTime-1,1:90])))
   
-  inc_sev_oth_1_3_pd_eq<- -log(1-((sum(PD[runTime-1,1:84]*prob_sev_other_pd_time_plac[1:84]) +
-                                     sum(PD2_c[runTime-1,1:84]*prob_sev_other_pd_time_plac[1:84]) +
-                                     sum(Pmc1[runTime-1,1:84]*prob_sev_other_pd_time_pmc1[1:84]*(1-pp1[1:84])) +
-                                 sum(Pmc2[runTime-1,1:84]*prob_sev_other_pd_time_pmc2[1:84]*(1-pp2[1:84])) +
-                                 sum(Pmc3[runTime-1,1:84]*prob_sev_other_pd_time_pmc3[1:84]*(1-pp3[1:84]))))/
-                             (sum(PD[runTime-1,1:84])+ sum(PD2_c[runTime-1,1:84])+
-                                sum(Pmc1[runTime-1,1:84])+
-                                sum(Pmc2[runTime-1,1:84])+sum(Pmc3[runTime-1,1:84])+
-                                sum(Ut[runTime-1,1:84]) + sum(Svt[runTime-1,1:84])))
+  inc_sev_oth_1_3_pd_eq<- -log(1-((sum(PD[runTime-1,1:90]*prob_sev_other_pd_time_plac[1:90]) +
+                                     sum(PD2_c[runTime-1,1:90]*prob_sev_other_pd_time_plac[1:90]) +
+                                     sum(Pmc1[runTime-1,1:90]*prob_sev_other_pd_time_pmc1[1:90]*(1-pp1[1:90])) +
+                                 sum(Pmc2[runTime-1,1:90]*prob_sev_other_pd_time_pmc2[1:90]*(1-pp2[1:90])) +
+                                 sum(Pmc3[runTime-1,1:90]*prob_sev_other_pd_time_pmc3[1:90]*(1-pp3[1:90]))))/
+                             (sum(PD[runTime-1,1:90])+ sum(PD2_c[runTime-1,1:90])+
+                                sum(Pmc1[runTime-1,1:90])+
+                                sum(Pmc2[runTime-1,1:90])+sum(Pmc3[runTime-1,1:90])+
+                                sum(Ut[runTime-1,1:90]) + sum(Svt[runTime-1,1:90])))
   ### number of PMC given out per day if perfect coverage.
   ### Include those who don't adhere to PMC (as they will still be given it)
+  ## NB need to change this code if ever run for <100% coverage.
   num_pmc_eq<-PD[runTime,1] + Pmc1[runTime,1] + Pmc2[runTime,1] + Pmc3[runTime,1]
   
   
@@ -396,6 +454,7 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
     summ<-c(inc_sma_all_eq=365*inc_sma_all_eq, 
             inc_sma_all_hosp_eq=365*inc_sma_all_hosp_eq,
             inc_sma_all_paton_eq=365*inc_sma_all_paton_eq,
+            #inc_sev_other_eq=365*inc_sev_other_eq,
             inc_sma_pd_eq=365*inc_sma_pd_eq,
             inc_sev_oth_pd_eq=365*inc_sev_oth_pd_eq,
             inc_sma_1_3_pd_eq=365*inc_sma_1_3_pd_eq,
@@ -403,11 +462,12 @@ run_repeat_mod<-function(inc_sma_genpop,eir,pmc,
             num_pmc_eq=365*num_pmc_eq, 
             num_sma_gen_pppy=365*num_sma_gen_pppd,
             num_sma_pd_pppy=365*num_sma_pd_pppd,
+            #num_sev_oth_gen_pppy=365*num_sev_oth_gen_pppd,
             num_sev_oth_pd_pppy=365*num_sev_oth_pd_pppd,
             deaths_pppy=365*deaths)
     if(output=="rds")
       saveRDS(summ,
-            file=paste0("out_summ_adm",adm,".rds"))
+            file=paste0("\\\\fi--san03\\homes\\lokell\\Lucy\\PMC_post_discharge\\output\\out_summ_adm",adm,".rds"))
     if(output=="summary2R")
       return(summ)
     } else {  
